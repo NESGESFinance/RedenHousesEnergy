@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NESGESFinance | RedenHousesEnergy SCADA Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- MathJax for formulas -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkmain: '#061410',
+                        darksec: '#141618',
+                        darkcard: '#160f0a',
+                        turq: '#2fd4c5',
+                        mag: '#ff3d8b',
+                        gold: '#d4b483',
+                        silver: '#c9d1d9'
+                    },
+                    fontFamily: {
+                        mono: ['"Courier New"', 'Courier', 'monospace'],
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #061410; color: #c9d1d9; }
+        .glass-panel { background: rgba(22, 15, 10, 0.85); backdrop-filter: blur(10px); border: 1px solid rgba(47, 212, 197, 0.2); }
+        .nav-active { background-color: rgba(47, 212, 197, 0.15); border-left: 4px solid #2fd4c5; color: #2fd4c5; }
+        .nav-item { transition: all 0.3s ease; }
+        .nav-item:hover:not(.nav-active) { background-color: rgba(255, 61, 139, 0.1); color: #ff3d8b; border-left: 4px solid #ff3d8b; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #061410; }
+        ::-webkit-scrollbar-thumb { background: #2fd4c5; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #ff3d8b; }
+
+        .neon-text-turq { text-shadow: 0 0 5px rgba(47, 212, 197, 0.5); }
+        .neon-text-mag { text-shadow: 0 0 5px rgba(255, 61, 139, 0.5); }
+        
+        .flicker { animation: flicker 2s infinite alternate; }
+        @keyframes flicker {
+            0% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden font-sans">
+
+    <!-- Sidebar -->
+    <aside class="w-64 glass-panel h-full flex flex-col z-20 shadow-2xl">
+        <div class="p-6 border-b border-gray-800 flex items-center justify-center flex-col">
+            <i class="fa-solid fa-bolt text-4xl text-gold mb-3 flicker"></i>
+            <h1 class="text-xl font-bold text-white tracking-widest text-center">NESGES<span class="text-turq">Finance</span></h1>
+            <p class="text-xs text-gray-400 mt-1 uppercase tracking-widest">RedenHousesEnergy</p>
+        </div>
+        
+        <nav class="flex-1 overflow-y-auto py-4">
+            <ul class="space-y-1">
+                <li><a href="#" onclick="switchTab('dashboard', this)" class="nav-item nav-active block px-6 py-3 text-sm font-medium"><i class="fa-solid fa-chart-line mr-3 w-5"></i> SCADA en Tiempo Real</a></li>
+                <li><a href="#" onclick="switchTab('tech', this)" class="nav-item block px-6 py-3 text-sm font-medium"><i class="fa-solid fa-microchip mr-3 w-5"></i> 6 Tecnologías RWA</a></li>
+                <li><a href="#" onclick="switchTab('physics', this)" class="nav-item block px-6 py-3 text-sm font-medium"><i class="fa-solid fa-square-root-variable mr-3 w-5"></i> Física y Cálculo</a></li>
+                <li><a href="#" onclick="switchTab('blockchain', this)" class="nav-item block px-6 py-3 text-sm font-medium"><i class="fa-brands fa-bitcoin mr-3 w-5"></i> Arquitectura BTC L1</a></li>
+                <li><a href="#" onclick="switchTab('finance', this)" class="nav-item block px-6 py-3 text-sm font-medium"><i class="fa-solid fa-wallet mr-3 w-5"></i> CAPEX & Finanzas</a></li>
+                <li><a href="#" onclick="switchTab('forensics', this)" class="nav-item block px-6 py-3 text-sm font-medium"><i class="fa-solid fa-shield-halved mr-3 w-5"></i> Auditoría Forense</a></li>
+            </ul>
+        </nav>
+
+        <div class="p-4 border-t border-gray-800">
+            <div class="flex items-center text-xs">
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-2"></div>
+                <span class="text-gray-400 font-mono" id="sys-time">SYS: ONLINE</span>
+            </div>
+            <div class="text-xs text-gray-500 mt-1 font-mono">LOC: Ibarra, ECU (90ha)</div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 bg-darkmain relative overflow-y-auto">
+        
+        <!-- Header -->
+        <header class="h-16 glass-panel sticky top-0 z-10 flex items-center justify-between px-8">
+            <h2 id="section-title" class="text-xl font-bold text-white tracking-wide">Oráculo de Telemetría (SCADA)</h2>
+            <div class="flex items-center space-x-6 text-sm font-mono">
+                <div class="text-turq"><i class="fa-solid fa-server mr-2"></i>Node: <span class="text-white">SYNCED</span></div>
+                <div class="text-mag"><i class="fa-solid fa-link mr-2"></i>Block: <span id="btc-block" class="text-white">923,867</span></div>
+                <button class="bg-turq text-darkmain px-4 py-1.5 rounded font-bold hover:bg-white transition text-xs uppercase tracking-wider">Deploy L1</button>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <div class="p-8">
+            
+            <!-- SECTION: SCADA LIVE DASHBOARD -->
+            <section id="tab-dashboard" class="tab-content block">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                    <div class="glass-panel p-6 rounded-lg border-l-4 border-l-gold">
+                        <h3 class="text-xs text-gray-400 uppercase tracking-widest mb-1">Disponibilidad Energética</h3>
+                        <div class="text-3xl font-bold text-white neon-text-turq">98.4<span class="text-sm">%</span></div>
+                        <p class="text-xs text-green-400 mt-2"><i class="fa-solid fa-arrow-trend-up"></i> Óptimo (True Zero-Intermittency)</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-lg border-l-4 border-l-mag">
+                        <h3 class="text-xs text-gray-400 uppercase tracking-widest mb-1">Temp. Torre de Sales</h3>
+                        <div class="text-3xl font-bold text-white"><span id="live-temp">585</span><span class="text-sm">°C</span></div>
+                        <p class="text-xs text-gray-400 mt-2">Rankine Cycle Híbrido</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-lg border-l-4 border-l-turq">
+                        <h3 class="text-xs text-gray-400 uppercase tracking-widest mb-1">Frecuencia de Red</h3>
+                        <div class="text-3xl font-bold text-white"><span id="live-freq">60.01</span><span class="text-sm"> Hz</span></div>
+                        <p class="text-xs text-gray-400 mt-2">Buffer cinético activo (<100ms)</p>
+                    </div>
+                    <div class="glass-panel p-6 rounded-lg border-l-4 border-l-silver">
+                        <h3 class="text-xs text-gray-400 uppercase tracking-widest mb-1">Producción Estimada</h3>
+                        <div class="text-3xl font-bold text-white">135<span class="text-sm"> GWh/año</span></div>
+                        <p class="text-xs text-gray-400 mt-2">100% Trazable On-Chain</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="glass-panel p-6 rounded-lg col-span-2">
+                        <h3 class="text-sm font-bold text-gold uppercase tracking-widest mb-4">Generación vs Demanda (24h)</h3>
+                        <div class="h-64">
+                            <canvas id="energyChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-6 rounded-lg">
+                        <h3 class="text-sm font-bold text-mag uppercase tracking-widest mb-4">Estado de Baterías de Gravedad</h3>
+                        <div class="space-y-4 font-mono text-sm">
+                            <div class="flex justify-between items-center">
+                                <span>Pozo Norte (100m)</span>
+                                <span class="text-turq">CARGADO (Z: -0m)</span>
+                            </div>
+                            <div class="w-full bg-gray-800 rounded h-2"><div class="bg-turq h-2 rounded w-full"></div></div>
+                            
+                            <div class="flex justify-between items-center">
+                                <span>Pozo Sur (100m)</span>
+                                <span class="text-yellow-400 text-right"><i class="fa-solid fa-arrow-down animate-bounce"></i> DESCARGANDO</span>
+                            </div>
+                            <div class="w-full bg-gray-800 rounded h-2"><div id="pozo-sur-bar" class="bg-yellow-400 h-2 rounded w-3/4"></div></div>
+
+                            <div class="flex justify-between items-center">
+                                <span>Pozo Este (100m)</span>
+                                <span class="text-turq">CARGADO (Z: -0m)</span>
+                            </div>
+                            <div class="w-full bg-gray-800 rounded h-2"><div class="bg-turq h-2 rounded w-full"></div></div>
+
+                            <div class="flex justify-between items-center">
+                                <span>Pozo Oeste (100m)</span>
+                                <span class="text-mag text-right"><i class="fa-solid fa-arrow-up animate-pulse"></i> CARGANDO (Z: -60m)</span>
+                            </div>
+                            <div class="w-full bg-gray-800 rounded h-2"><div id="pozo-oeste-bar" class="bg-mag h-2 rounded w-2/5"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION: 6 TECHNOLOGIES -->
+            <section id="tab-tech" class="tab-content hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="glass-panel p-6 rounded border-t-4 border-t-gold hover:-translate-y-1 transition transform">
+                        <div class="text-gold text-3xl mb-4"><i class="fa-solid fa-solar-panel"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2">1. Fotovoltaica de Anillos</h3>
+                        <p class="text-sm text-gray-400 mb-3">72 MWp en anillos concéntricos con seguimiento solar activo guiado por IA. Absorbe carga base diurna.</p>
+                        <ul class="text-xs text-turq font-mono space-y-1">
+                            <li><i class="fa-solid fa-check"></i> Inteligencia predictiva</li>
+                            <li><i class="fa-solid fa-check"></i> Inclinación milimétrica</li>
+                        </ul>
+                    </div>
+                    <div class="glass-panel p-6 rounded border-t-4 border-t-mag hover:-translate-y-1 transition transform">
+                        <div class="text-mag text-3xl mb-4"><i class="fa-solid fa-tower-observation"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2">2. Torre de Sales Fundidas</h3>
+                        <p class="text-sm text-gray-400 mb-3">Núcleo térmico aislando calor entre 300°C y 600°C usando NaNO3/KNO3. Aislante ecológico de ceniza volcánica.</p>
+                        <ul class="text-xs text-gold font-mono space-y-1">
+                            <li><i class="fa-solid fa-check"></i> Carga base nocturna</li>
+                            <li><i class="fa-solid fa-check"></i> Retención prolongada</li>
+                        </ul>
+                    </div>
+                    <div class="glass-panel p-6 rounded border-t-4 border-t-turq hover:-translate-y-1 transition transform">
+                        <div class="text-turq text-3xl mb-4"><i class="fa-solid fa-weight-hanging"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2">3. Pozos de Gravedad</h3>
+                        <p class="text-sm text-gray-400 mb-3">4 pozos de 100m de profundidad. Pesos muertos descienden para generar energía cinética instantánea.</p>
+                        <ul class="text-xs text-silver font-mono space-y-1">
+                            <li><i class="fa-solid fa-check"></i> Inyección pico (<100ms)</li>
+                            <li><i class="fa-solid fa-check"></i> Cero degradación química</li>
+                        </ul>
+                    </div>
+                    <div class="glass-panel p-6 rounded border-t-4 border-t-silver hover:-translate-y-1 transition transform">
+                        <div class="text-silver text-3xl mb-4"><i class="fa-solid fa-fan"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2">4. Motores Brushless</h3>
+                        <p class="text-sm text-gray-400 mb-3">Motores bidireccionales sin escobillas en la superficie de los pozos. Actúan como elevadores y generadores (>95% eficiencia).</p>
+                        <ul class="text-xs text-mag font-mono space-y-1">
+                            <li><i class="fa-solid fa-check"></i> Vida útil de 50 años</li>
+                            <li><i class="fa-solid fa-check"></i> Fricción nula</li>
+                        </ul>
+                    </div>
+                    <div class="glass-panel p-6 rounded border-t-4 border-t-gold hover:-translate-y-1 transition transform">
+                        <div class="text-gold text-3xl mb-4"><i class="fa-solid fa-fire-burner"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2">5. Pirólisis Inversa</h3>
+                        <p class="text-sm text-gray-400 mb-3">Degradación térmica (400-500°C) sin oxígeno. Convierte pasivo plástico en gas de síntesis, aceite y biochar.</p>
+                        <ul class="text-xs text-turq font-mono space-y-1">
+                            <li><i class="fa-solid fa-check"></i> Economía Circular Total</li>
+                            <li><i class="fa-solid fa-check"></i> Fail-safe de emergencia</li>
+                        </ul>
+                    </div>
+                    <div class="glass-panel p-6 rounded border-t-4 border-t-mag hover:-translate-y-1 transition transform">
+                        <div class="text-mag text-3xl mb-4"><i class="fa-solid fa-industry"></i></div>
+                        <h3 class="text-lg font-bold text-white mb-2">6. Turbinas de Conversión</h3>
+                        <p class="text-sm text-gray-400 mb-3">Turbinas de vapor y gas usando Ciclo Rankine (~40% eficiencia). Generan electricidad final a partir del calor o gas.</p>
+                        <ul class="text-xs text-silver font-mono space-y-1">
+                            <li><i class="fa-solid fa-check"></i> Alternador de alta presión</li>
+                            <li><i class="fa-solid fa-check"></i> Intercambio cerrado</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION: PHYSICS & MATH -->
+            <section id="tab-physics" class="tab-content hidden">
+                <div class="glass-panel p-8 rounded-lg mb-6">
+                    <h3 class="text-lg font-bold text-turq mb-4"><i class="fa-solid fa-calculator"></i> Modelo Diferencial: Batería Cinética Gravitacional</h3>
+                    <p class="text-sm text-gray-300 mb-4">
+                        La potencia instantánea \( P(t) \) recuperable durante la descarga de los 4 pozos de gravedad de 100m (radio 1.5m) utilizando estatores de motores Brushless bidireccionales se modela mediante la siguiente ecuación diferencial:
+                    </p>
+                    <div class="bg-black p-6 rounded text-center my-4 overflow-x-auto text-xl">
+                        \[ P(t) = \eta \cdot m \cdot g \cdot rac{dh(t)}{dt} \]
+                    </div>
+                    <ul class="text-sm text-gray-400 space-y-2 mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <li><strong class="text-white">\( \eta \):</strong> Eficiencia mecatrónica del Brushless (> 95%)</li>
+                        <li><strong class="text-white">\( m \):</strong> Masa total del bloque suspendido (kg)</li>
+                        <li><strong class="text-white">\( g \):</strong> Constante gravitatoria (\( 9.81 \, m/s^2 \))</li>
+                        <li><strong class="text-white">\( rac{dh(t)}{dt} \):</strong> Tasa de descenso milimétrico (velocidad controlada por IA)</li>
+                    </ul>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="glass-panel p-6 rounded border-l-4 border-gold">
+                        <h4 class="font-bold text-white mb-2">Ciclo Rankine Termodinámico (Sales Fundidas)</h4>
+                        <p class="text-sm text-gray-400 mb-3">Eficiencia térmica proyectada operando entre 300°C y 600°C.</p>
+                        <div class="bg-black p-4 rounded text-center text-sm">
+                            \[ \eta_{th} = 1 - rac{T_{cold}}{T_{hot}} pprox 40\% \]
+                        </div>
+                    </div>
+                    <div class="glass-panel p-6 rounded border-l-4 border-mag">
+                        <h4 class="font-bold text-white mb-2">Sincronización Algorítmica (Neurociencia)</h4>
+                        <p class="text-sm text-gray-400">
+                            La red neuronal toma decisiones en <strong>milisegundos</strong> para despachar o acumular energía, reduciendo la entropía operativa (desperdicio térmico/mecánico) a través de un modelo de optimización predictiva.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION: BLOCKCHAIN L1 & TOKENOMICS -->
+            <section id="tab-blockchain" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="glass-panel p-6 rounded-lg">
+                            <h3 class="text-lg font-bold text-gold mb-4">Arquitectura Dual-Asset (Bitcoin L1)</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="bg-black/50 p-4 border border-gray-800 rounded">
+                                    <h4 class="text-turq font-bold mb-2">1. NGF•BTC•AM (Utility Rune)</h4>
+                                    <ul class="text-xs text-gray-400 space-y-2">
+                                        <li><strong>Rune ID:</strong> 923867:120</li>
+                                        <li><strong>Tipo:</strong> Fungible Token (Protocolo Runes)</li>
+                                        <li><strong>Total Supply:</strong> 5,930,000,000</li>
+                                        <li><strong>Funcionalidad:</strong> Identidad, Membresía, Gobernanza Consultiva.</li>
+                                        <li><strong>Riesgo Legal:</strong> NO es Security (Aprobado Howey Test).</li>
+                                    </ul>
+                                </div>
+                                <div class="bg-black/50 p-4 border border-gray-800 rounded">
+                                    <h4 class="text-mag font-bold mb-2">2. Proyecto Ordinales (RWA)</h4>
+                                    <ul class="text-xs text-gray-400 space-y-2">
+                                        <li><strong>Serie A:</strong> El Refugio (1,448 unidades fijas)</li>
+                                        <li><strong>Tipo:</strong> Non-Fungible (Protocolo Ordinals / Inscriptions)</li>
+                                        <li><strong>Anclaje:</strong> Hashes SHA-256 (OP_RETURN)</li>
+                                        <li><strong>Funcionalidad:</strong> Derechos Económicos, Revenue-Share.</li>
+                                        <li><strong>Compliance:</strong> LLC SPV en New Mexico, USA (Reg D 506c).</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel p-6 rounded-lg">
+                            <h3 class="text-lg font-bold text-white mb-2">Contratos Inteligentes & Enrutamiento (Rust/Axum)</h3>
+                            <pre class="bg-black p-4 rounded text-xs text-turq font-mono overflow-x-auto">
+// psbt_engine.rs - Motor de Construcción de Transacciones
+fn verify_rune_balance(user_utxos: Vec<UTXO>, required_runes: u64) -> Result<bool, Error> {
+    let total_balance: u64 = user_utxos.iter()
+        .filter(|u| u.contains_rune("NGF•BTC•AM"))
+        .map(|u| u.rune_amount)
+        .sum();
+    
+    if total_balance >= required_runes {
+        Ok(true) // Acceso corporativo concedido
+    } else {
+        Err(Error::InsufficientBalance)
+    }
+}
+// Firma Multifirma: MuSig2 (3 de 5)</pre>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 rounded-lg flex flex-col items-center">
+                        <h3 class="text-sm font-bold text-silver uppercase tracking-widest mb-4 w-full text-left">Distribución Tokenomics</h3>
+                        <div class="relative w-48 h-48 mb-6">
+                            <canvas id="tokenomicsChart"></canvas>
+                        </div>
+                        <ul class="text-xs text-gray-400 w-full space-y-2 font-mono">
+                            <li class="flex justify-between"><span class="text-gold">■ Reserva</span> <span>30%</span></li>
+                            <li class="flex justify-between"><span class="text-turq">■ Proy. Productivos</span> <span>25%</span></li>
+                            <li class="flex justify-between"><span class="text-mag">■ Social/Ambiental</span> <span>15%</span></li>
+                            <li class="flex justify-between"><span class="text-blue-400">■ Alianzas</span> <span>10%</span></li>
+                            <li class="flex justify-between"><span class="text-purple-400">■ Tesorería</span> <span>10%</span></li>
+                            <li class="flex justify-between"><span class="text-green-400">■ Otros (Com, Eq)</span> <span>10%</span></li>
+                        </ul>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- SECTION: FINANCIALS -->
+            <section id="tab-finance" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="glass-panel p-6 rounded-lg col-span-2">
+                        <h3 class="text-lg font-bold text-white mb-4">CAPEX & Retorno de Inversión (RedenHousesEnergy)</h3>
+                        <div class="flex flex-col md:flex-row gap-6 mb-6">
+                            <div class="bg-black/40 p-4 rounded border-l-2 border-turq flex-1">
+                                <p class="text-xs text-gray-500 uppercase">Inversión (CAPEX)</p>
+                                <p class="text-2xl font-bold text-white">$118M - $198M</p>
+                            </div>
+                            <div class="bg-black/40 p-4 rounded border-l-2 border-mag flex-1">
+                                <p class="text-xs text-gray-500 uppercase">Payback Estimado</p>
+                                <p class="text-2xl font-bold text-white">12 - 16 Años</p>
+                            </div>
+                        </div>
+                        
+                        <h4 class="text-sm font-bold text-gold uppercase tracking-widest mt-6 mb-3">6 Flujos de Ingresos Verificables (Revenue Streams)</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-300">
+                            <div class="p-3 border border-gray-800 rounded bg-black/20"><i class="fa-solid fa-plug-circle-bolt text-gold w-5"></i> Venta de Energía a red (24/7)</div>
+                            <div class="p-3 border border-gray-800 rounded bg-black/20"><i class="fa-solid fa-oil-well text-turq w-5"></i> Aceite Pirolítico Sintético ($0.70-0.90/L)</div>
+                            <div class="p-3 border border-gray-800 rounded bg-black/20"><i class="fa-solid fa-leaf text-green-500 w-5"></i> Bonos de Carbono VCS ($15-50/ton CO2)</div>
+                            <div class="p-3 border border-gray-800 rounded bg-black/20"><i class="fa-solid fa-server text-blue-500 w-5"></i> Servicios Estabilización Red (Milisegundos)</div>
+                            <div class="p-3 border border-gray-800 rounded bg-black/20"><i class="fa-solid fa-fire text-orange-500 w-5"></i> Comercialización Biochar/Char</div>
+                            <div class="p-3 border border-gray-800 rounded bg-black/20"><i class="fa-brands fa-bitcoin text-yellow-500 w-5"></i> Tokenización RWA On-Chain</div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-6 rounded-lg flex flex-col justify-center border border-gold">
+                        <i class="fa-solid fa-globe text-4xl text-center text-gray-600 mb-4"></i>
+                        <h3 class="text-center font-bold text-gold mb-2">Vehículo Legal (SPV)</h3>
+                        <p class="text-xs text-gray-400 text-center mb-4">
+                            Cumplimiento de la Clarity Act, MiCA y Reg D (SEC). Aislamiento total de riesgo patrimonial mediante estructura corporativa híbrida.
+                        </p>
+                        <div class="bg-black p-3 rounded text-center text-xs font-mono border border-gray-800">
+                            <span class="text-mag block">Ecuador: S.A.S. BIC</span>
+                            (Operativa Física, RUC 1091799299001)
+                            <hr class="border-gray-800 my-2">
+                            <span class="text-turq block">USA: LLC New Mexico</span>
+                            (Contratos & Holding, #0008086872)
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION: FORENSICS & CROME -->
+            <section id="tab-forensics" class="tab-content hidden">
+                <div class="glass-panel p-8 rounded-lg border border-red-900">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-red-500 uppercase tracking-widest"><i class="fa-solid fa-shield-halved"></i> Auditoría Forense P2P (Plan CROME)</h3>
+                        <span class="bg-red-900/50 text-red-400 text-xs px-3 py-1 rounded font-bold border border-red-800">Veredicto: APROBADO (Con Remediaciones)</span>
+                    </div>
+                    <p class="text-sm text-gray-300 mb-6">Auditoría ejecutada por el agente IA multidisciplinario evaluando 26 dominios técnicos, criptográficos y legales. Total de hallazgos: 13.</p>
+                    
+                    <div class="space-y-4">
+                        <!-- Riesgo 1 -->
+                        <div class="bg-black/60 p-5 rounded border-l-4 border-red-500">
+                            <div class="flex justify-between items-start mb-2">
+                                <h4 class="font-bold text-white text-sm">CROME-001: Veracidad del Oráculo de Hardware</h4>
+                                <span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded">Riesgo CRÍTICO</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mb-2">Vulnerabilidad en la medición de kWh físicos (SCADA) previo al anclaje on-chain.</p>
+                            <p class="text-xs text-turq"><i class="fa-solid fa-wrench"></i> <strong>Solución:</strong> Implementar firmas de hardware TPM en sensores físicos para evitar inyección de datos falsos a la red Bitcoin L1.</p>
+                        </div>
+
+                        <!-- Riesgo 2 -->
+                        <div class="bg-black/60 p-5 rounded border-l-4 border-yellow-500">
+                            <div class="flex justify-between items-start mb-2">
+                                <h4 class="font-bold text-white text-sm">CROME-002: Exposición Criptográfica y Llaves</h4>
+                                <span class="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded font-bold">Riesgo MEDIO</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mb-2">Manejo de xpub (Extended Public Keys) en frontend web3 y configuración de tesorería descentralizada.</p>
+                            <p class="text-xs text-gold"><i class="fa-solid fa-wrench"></i> <strong>Solución:</strong> Transición a firmas MuSig2 (3/5) estrictas y aislamiento de servidor para pasarela Axum (Rust). Xpub tratada como dato altamente sensible.</p>
+                        </div>
+                        
+                        <!-- Riesgo 3 -->
+                        <div class="bg-black/60 p-5 rounded border-l-4 border-yellow-500">
+                            <div class="flex justify-between items-start mb-2">
+                                <h4 class="font-bold text-white text-sm">CROME-003: Riesgo Termodinámico (Sales Fundidas)</h4>
+                                <span class="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded font-bold">Riesgo MEDIO</span>
+                            </div>
+                            <p class="text-xs text-gray-400 mb-2">Pérdida de inercia térmica en invierno causando solidificación irreversible de NaNO3/KNO3 (<220°C).</p>
+                            <p class="text-xs text-gold"><i class="fa-solid fa-wrench"></i> <strong>Solución:</strong> Implementación de sistema "Heat Trace" dual (eléctrico y vía gas de pirólisis) con monitoreo redundante 24/7.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Interactive Scripts -->
+    <script>
+        // Tab Switching Logic
+        function switchTab(tabId, element) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.add('hidden');
+            });
+            // Show target tab
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            
+            // Update nav styling
+            document.querySelectorAll('.nav-item').forEach(nav => {
+                nav.classList.remove('nav-active');
+            });
+            element.classList.add('nav-active');
+            
+            // Update Header Title
+            const titles = {
+                'dashboard': 'Oráculo de Telemetría (SCADA)',
+                'tech': '6 Tecnologías Integradas (Arquitectura RWA)',
+                'physics': 'Modelos Diferenciales y Termodinámica',
+                'blockchain': 'Criptografía On-Chain y Tokenización',
+                'finance': 'Ingeniería Financiera (S.A.S. & LLC)',
+                'forensics': 'Forense Digital y Mitigación de Riesgos'
+            };
+            document.getElementById('section-title').innerText = titles[tabId];
+        }
+
+        // Live Clock / Time
+        setInterval(() => {
+            const now = new Date();
+            const timeString = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            document.getElementById('sys-time').innerText = 'SYS: ' + timeString;
+        }, 1000);
+
+        // Real-time Data Simulation (Flickering SCADA)
+        setInterval(() => {
+            // Grid frequency (around 60Hz)
+            const freq = (60.00 + (Math.random() * 0.04 - 0.02)).toFixed(2);
+            document.getElementById('live-freq').innerText = freq;
+            
+            // Salt Temp (around 585C)
+            const temp = (585.0 + (Math.random() * 1.5 - 0.7)).toFixed(1);
+            document.getElementById('live-temp').innerText = temp;
+
+            // Block Height increment simulation (very slow, just for effect)
+            if(Math.random() > 0.98) {
+                const blockEl = document.getElementById('btc-block');
+                let block = parseInt(blockEl.innerText.replace(',', ''));
+                blockEl.innerText = (block + 1).toLocaleString();
+            }
+
+            // Gravity Bars
+            const pozoSur = document.getElementById('pozo-sur-bar');
+            let w = parseInt(pozoSur.style.width || '75');
+            w = w > 0 ? w - 1 : 100;
+            pozoSur.style.width = w + '%';
+
+            const pozoOeste = document.getElementById('pozo-oeste-bar');
+            let w2 = parseInt(pozoOeste.style.width || '40');
+            w2 = w2 < 100 ? w2 + 1 : 0;
+            pozoOeste.style.width = w2 + '%';
+
+        }, 800);
+
+        // Initialize Charts when DOM loads
+        document.addEventListener("DOMContentLoaded", function() {
+            // Chart.js global defaults
+            Chart.defaults.color = '#8b949e';
+            Chart.defaults.font.family = 'Inter, sans-serif';
+
+            // Energy Chart
+            const ctxEnergy = document.getElementById('energyChart').getContext('2d');
+            new Chart(ctxEnergy, {
+                type: 'line',
+                data: {
+                    labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+                    datasets: [
+                        {
+                            label: 'Torre de Sales (Rankine)',
+                            data: [80, 75, 40, 20, 30, 80, 80],
+                            borderColor: '#ff3d8b',
+                            backgroundColor: 'rgba(255, 61, 139, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Solar Fotovoltaica',
+                            data: [0, 10, 60, 95, 50, 5, 0],
+                            borderColor: '#2fd4c5',
+                            backgroundColor: 'rgba(47, 212, 197, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Demanda de Red (Spikes)',
+                            data: [40, 35, 55, 65, 75, 90, 50],
+                            borderColor: '#d4b483',
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+
+            // Tokenomics Chart
+            const ctxToken = document.getElementById('tokenomicsChart').getContext('2d');
+            new Chart(ctxToken, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Reserva', 'Proy. Productivos', 'Social', 'Alianzas', 'Tesorería', 'Otros'],
+                    datasets: [{
+                        data: [30, 25, 15, 10, 10, 10],
+                        backgroundColor: ['#d4b483', '#2fd4c5', '#ff3d8b', '#60a5fa', '#c084fc', '#4ade80'],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(c) { return c.label + ': ' + c.raw + '%'; } } }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
